@@ -30,43 +30,30 @@ class BitReader:
         return real_value
 
 
-# split canvas into chunks of 125 * 125
-#
-
-
 def main():
     with open("data/place-meta.json", "r") as meta_file:
         meta = json.load(meta_file)
-    meta2022 = meta["2022"]
-    canvas_size_x = meta2022["sizeX"]
+    # meta2022 = meta["2022"]
+    metadata = meta["base"]
+    canvas_size_x = metadata["sizeX"]
     last = 0
-    discarded_hits = 0
-    with open("data/new_encoded.bin", "wb") as outfile:
-        for chunk in meta2022["chunks"]:
-            path = chunk["path"]
-            size_x, size_y, size_color = chunk["format"]
-            points = chunk["points"]
-            with open(path, "rb") as chunk_file:
-                chunk_data = chunk_file.read()
-                reader = BitReader(chunk_data)
 
-            step_nbits = sum((size_x, size_y, size_color))
-            hits = min(points, math.floor(len(chunk_data) / step_nbits * 8))
+    for chunk in metadata["chunks"]:
+        path = chunk["path"]
+        size_x, size_y, size_color = chunk["format"]
+        points = chunk["points"]
+        with open(path, "rb") as chunk_file:
+            chunk_data = chunk_file.read()
+            reader = BitReader(chunk_data)
 
-            # hit_buffer = list()
-            for _ in trange(hits):
-                x, y, color = reader.read(size_x), reader.read(size_y), reader.read(size_color)
+        step_nbits = sum((size_x, size_y, size_color))
+        hits = min(points, math.floor(len(chunk_data) / step_nbits * 8))
+        # hits = min(1000, hits)
 
-                # coord_index = y * canvas_size_x + x
-                # if (coord_index - last) > 2**20:
-                #     discarded_hits += 1
-                # last = coord_index
-                # hit_buffer.append((x, y, color))
-
-                # if len(hit_buffer) > 256:
-
-
-            print(discarded_hits)
+        for row in trange(hits):
+            x, y, color = reader.read(size_x), reader.read(size_y), reader.read(size_color)
+            # print(",".join(map(str, (row, x, y, color))))
+        print(hits)
 
 
 if __name__ == "__main__":

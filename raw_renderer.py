@@ -6,6 +6,7 @@ import numpy as np
 import csv
 
 from tqdm import tqdm, trange
+import zstandard as zstd
 
 CANVAS_WIDTH = 1000
 CANVAS_HEIGHT = CANVAS_WIDTH
@@ -41,10 +42,6 @@ COLORS2022 = {'000000': (0, 0, 0), '00756F': (0, 117, 111), '009EAA': (0, 158, 1
               'FFA800': (255, 168, 0), 'FFB470': (255, 180, 112), 'FFD635': (255, 214, 53),
               'FFF8B8': (255, 248, 184), 'FFFFFF': (255, 255, 255)}
 
-# from line_profiler_pycharm import profile
-#
-#
-# @profile
 def main2022():
     name_prefix = str(datetime.datetime.now().timestamp())
     ffmpeg_common_opts = ["ffmpeg",
@@ -105,6 +102,64 @@ def main2022():
     for ffmpeg_proc in ffmpeg_procs:
         ffmpeg_proc.stdin.close()
         ffmpeg_proc.wait()
+
+from line_profiler_pycharm import profile
+@profile
+def main2022_rawvideo():
+    name_prefix = str(datetime.datetime.now().timestamp())
+    frame_data = np.full((CANVAS_WIDTH_2022, CANVAS_WIDTH_2022, 3), 255, dtype=np.uint8)
+    # fds = []
+    # for i in range(4):
+    #     fds.append(open(f"/Volumes/stripe/rplace2022data/{name_prefix}_{i}.bin", "wb"))
+    fd = open(f"/Volumes/stripe/rplace2022data/{name_prefix}.bin", "wb")
+
+    # contexts = []
+    # compressors = []
+    # for fd in fds:
+    #     cctx = zstd.ZstdCompressor(level=1, threads=0)
+    #     contexts.append(cctx)
+    #     compressors.append(cctx.stream_writer(fd))
+    cctx = zstd.ZstdCompressor(level=1, threads=3)
+    compressor = cctx.stream_writer(fd)
+    try:
+        with open("/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas.csv", "r") as infile:
+            infile.readline()  # skip header
+            csv_reader = csv.reader(infile)
+            # data = list()
+            last_hit = -1
+            pbar = tqdm(unit_scale=True, unit_divisor=1024, unit="B")
+
+            for row in tqdm(csv_reader, total=160353104):
+                # row[2]: color, row[3]: coords, row[0]: time string
+                if len(row[0]) >= 20:
+                    parsed_time = datetime.datetime.strptime(row[0], r"%Y-%m-%d %H:%M:%S.%f")
+                else:
+                    parsed_time = datetime.datetime.strptime(row[0], r"%Y-%m-%d %H:%M:%S")
+                timestamp = parsed_time.timestamp()
+                coords = tuple(map(lambda x: x.strip("()"), row[3].split(",")))
+                if len(coords) == 2:
+                    frame_data[int(coords[1]),
+                               int(coords[0])] = COLORS2022[row[2]]
+                else:
+                    frame_data[int(coords[1]):int(coords[3])+1,
+                               int(coords[0]):int(coords[2])+1] = COLORS2022[row[2]]
+
+                # for hit_index, data in tqdm(enumerate(data), total=16559897):
+                #     ts, x, y, color_index = data
+                #     frame_data[y][x] = COLORS[color_index]
+                if timestamp - last_hit > 5.:
+                    last_hit = timestamp
+                    compressor.write(frame_data.tobytes())  # top left
+                    pbar.update(2000*2000*3)
+    finally:
+        # for compressor in compressors:
+        #     compressor.flush()
+        #     compressor.close()
+        # for fd in fds:
+        #     fd.close()
+        compressor.flush()
+        compressor.close()
+        fd.close()
 
 
 def main():
@@ -170,4 +225,4 @@ if __name__ == "__main__":
     # print(colors)
 
     # main()
-    main2022()
+    main2022_rawvideo()

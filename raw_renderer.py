@@ -103,39 +103,50 @@ def main2022():
         ffmpeg_proc.stdin.close()
         ffmpeg_proc.wait()
 
+
 from line_profiler_pycharm import profile
+
+import multiprocessing
+
+
+def datetime_parser(job_queue: multiprocessing.Queue, result_queue: multiprocessing.Queue):
+    while True:
+        try:
+            data = job_queue.get()
+        except ValueError:
+            break
+        if len(data) >= 20:
+            parsed_time = datetime.datetime.strptime(data, r"%Y-%m-%d %H:%M:%S.%f")
+        else:
+            parsed_time = datetime.datetime.strptime(data, r"%Y-%m-%d %H:%M:%S")
+        result_queue.put(parsed_time.timestamp())
+
+
+
 @profile
 def main2022_rawvideo():
+    dts_q = multiprocessing.Queue()
+    parsed_ts_q = multiprocessing.Queue()
+    dts_parser = multiprocessing.Process(target=datetime_parser, args=(dts_q, parsed_ts_q, ))
+    dts_parser.start()
+
     name_prefix = str(datetime.datetime.now().timestamp())
     frame_data = np.full((CANVAS_WIDTH_2022, CANVAS_WIDTH_2022, 3), 255, dtype=np.uint8)
-    # fds = []
-    # for i in range(4):
-    #     fds.append(open(f"/Volumes/stripe/rplace2022data/{name_prefix}_{i}.bin", "wb"))
     fd = open(f"/Volumes/stripe/rplace2022data/{name_prefix}.bin", "wb")
-
-    # contexts = []
-    # compressors = []
-    # for fd in fds:
-    #     cctx = zstd.ZstdCompressor(level=1, threads=0)
-    #     contexts.append(cctx)
-    #     compressors.append(cctx.stream_writer(fd))
     cctx = zstd.ZstdCompressor(level=1, threads=3)
     compressor = cctx.stream_writer(fd)
+    bytes_written_compressed = 0
     try:
         with open("/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas.csv", "r") as infile:
             infile.readline()  # skip header
             csv_reader = csv.reader(infile)
-            # data = list()
             last_hit = -1
-            pbar = tqdm(unit_scale=True, unit_divisor=1024, unit="B")
+            pbar_written_raw = tqdm(unit_scale=True, unit_divisor=1024, unit="B", desc="Bytes written (raw) ")
+            pbar_written_compressed = tqdm(unit_scale=True, unit_divisor=1024, unit="B", desc="Bytes written (comp)")
 
             for row in tqdm(csv_reader, total=160353104):
                 # row[2]: color, row[3]: coords, row[0]: time string
-                if len(row[0]) >= 20:
-                    parsed_time = datetime.datetime.strptime(row[0], r"%Y-%m-%d %H:%M:%S.%f")
-                else:
-                    parsed_time = datetime.datetime.strptime(row[0], r"%Y-%m-%d %H:%M:%S")
-                timestamp = parsed_time.timestamp()
+                dts_q.put(row[0])
                 coords = tuple(map(lambda x: x.strip("()"), row[3].split(",")))
                 if len(coords) == 2:
                     frame_data[int(coords[1]),
@@ -143,23 +154,21 @@ def main2022_rawvideo():
                 else:
                     frame_data[int(coords[1]):int(coords[3])+1,
                                int(coords[0]):int(coords[2])+1] = COLORS2022[row[2]]
+                data_bytes = frame_data.tobytes()
 
-                # for hit_index, data in tqdm(enumerate(data), total=16559897):
-                #     ts, x, y, color_index = data
-                #     frame_data[y][x] = COLORS[color_index]
+                timestamp = parsed_ts_q.get()
                 if timestamp - last_hit > 5.:
                     last_hit = timestamp
-                    compressor.write(frame_data.tobytes())  # top left
-                    pbar.update(2000*2000*3)
+                    compressor.write(data_bytes)  # top left
+                    pbar_written_raw.update(frame_data.nbytes)
+                    pbar_written_compressed.update(compressor.tell() - bytes_written_compressed)
+                    bytes_written_compressed = compressor.tell()
     finally:
-        # for compressor in compressors:
-        #     compressor.flush()
-        #     compressor.close()
-        # for fd in fds:
-        #     fd.close()
         compressor.flush()
         compressor.close()
         fd.close()
+        dts_q.close()
+        dts_parser.join()
 
 
 def main():

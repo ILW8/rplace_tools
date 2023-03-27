@@ -5,8 +5,14 @@ import subprocess
 import numpy as np
 import csv
 
-from tqdm import tqdm, trange
+from tqdm import tqdm
 import zstandard as zstd
+import ciso8601
+import multiprocessing
+
+
+# from line_profiler_pycharm import profile
+
 
 CANVAS_WIDTH = 1000
 CANVAS_HEIGHT = CANVAS_WIDTH
@@ -41,6 +47,7 @@ COLORS2022 = {'000000': (0, 0, 0), '00756F': (0, 117, 111), '009EAA': (0, 158, 1
               'FF3881': (255, 56, 129), 'FF4500': (255, 69, 0), 'FF99AA': (255, 153, 170),
               'FFA800': (255, 168, 0), 'FFB470': (255, 180, 112), 'FFD635': (255, 214, 53),
               'FFF8B8': (255, 248, 184), 'FFFFFF': (255, 255, 255)}
+
 
 def main2022():
     name_prefix = str(datetime.datetime.now().timestamp())
@@ -104,11 +111,6 @@ def main2022():
         ffmpeg_proc.wait()
 
 
-from line_profiler_pycharm import profile
-
-import multiprocessing
-
-
 def datetime_parser(job_queue: multiprocessing.Queue, result_queue: multiprocessing.Queue):
     while True:
         try:
@@ -122,14 +124,8 @@ def datetime_parser(job_queue: multiprocessing.Queue, result_queue: multiprocess
         result_queue.put(parsed_time.timestamp())
 
 
-
-@profile
+# @profile
 def main2022_rawvideo():
-    dts_q = multiprocessing.Queue()
-    parsed_ts_q = multiprocessing.Queue()
-    dts_parser = multiprocessing.Process(target=datetime_parser, args=(dts_q, parsed_ts_q, ))
-    dts_parser.start()
-
     name_prefix = str(datetime.datetime.now().timestamp())
     frame_data = np.full((CANVAS_WIDTH_2022, CANVAS_WIDTH_2022, 3), 255, dtype=np.uint8)
     fd = open(f"/Volumes/stripe/rplace2022data/{name_prefix}.bin", "wb")
@@ -137,29 +133,27 @@ def main2022_rawvideo():
     compressor = cctx.stream_writer(fd)
     bytes_written_compressed = 0
     try:
-        with open("/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas.csv", "r") as infile:
+        with open("/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas_t.csv", "r") as infile:
             infile.readline()  # skip header
             csv_reader = csv.reader(infile)
-            last_hit = -1
+            last_hit = datetime.datetime.fromtimestamp(0)
             pbar_written_raw = tqdm(unit_scale=True, unit_divisor=1024, unit="B", desc="Bytes written (raw) ")
             pbar_written_compressed = tqdm(unit_scale=True, unit_divisor=1024, unit="B", desc="Bytes written (comp)")
 
             for row in tqdm(csv_reader, total=160353104):
                 # row[2]: color, row[3]: coords, row[0]: time string
-                dts_q.put(row[0])
-                coords = tuple(map(lambda x: x.strip("()"), row[3].split(",")))
+                coords = row[3].split(",")
                 if len(coords) == 2:
                     frame_data[int(coords[1]),
                                int(coords[0])] = COLORS2022[row[2]]
                 else:
                     frame_data[int(coords[1]):int(coords[3])+1,
                                int(coords[0]):int(coords[2])+1] = COLORS2022[row[2]]
-                data_bytes = frame_data.tobytes()
 
-                timestamp = parsed_ts_q.get()
-                if timestamp - last_hit > 5.:
+                timestamp = ciso8601.parse_datetime(row[0])
+                if (timestamp - last_hit).seconds > 5.:
                     last_hit = timestamp
-                    compressor.write(data_bytes)  # top left
+                    compressor.write(frame_data.tobytes())  # top left
                     pbar_written_raw.update(frame_data.nbytes)
                     pbar_written_compressed.update(compressor.tell() - bytes_written_compressed)
                     bytes_written_compressed = compressor.tell()
@@ -167,8 +161,6 @@ def main2022_rawvideo():
         compressor.flush()
         compressor.close()
         fd.close()
-        dts_q.close()
-        dts_parser.join()
 
 
 def main():

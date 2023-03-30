@@ -656,11 +656,13 @@ class CreditsGenerator:
                 self.frame_data[hit_y, hit_x] = self.background_canvas[hit_y, hit_x]
 
             if self.hit_num % 256 == 0:
+                # if self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES:
+                self.background_canvas_point_in_time += datetime.timedelta(seconds=15)
+                self.load_background_canvas(self.background_canvas_offset_x, self.background_canvas_offset_y,
+                                            self.background_canvas_point_in_time,
+                                            open_new=False)
                 if self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES:
-                    self.background_canvas_point_in_time += datetime.timedelta(seconds=30)
-                    self.load_background_canvas(self.background_canvas_offset_x, self.background_canvas_offset_y,
-                                                self.background_canvas_point_in_time,
-                                                open_new=False)
+                    self.frame_data = self.background_canvas.copy()
                 self.current_frame += 1
                 return self.frame_data
 
@@ -672,7 +674,7 @@ def main2022_rawvideo():
     canvas_height = int(CANVAS_HEIGHT_2022 // VPIXW_PER_PIXEL)
     print(canvas_width, canvas_height)
     credits_generator = CreditsGenerator(NAMES)
-    credits_generator.load_background_canvas(600, 600, ciso8601.parse_datetime("2022-04-01T17:00:00.000"))
+    credits_generator.load_background_canvas(600, 600, ciso8601.parse_datetime("2022-04-01T16:00:00.000"))
 
     pbar = tqdm(unit="frames")
     ffmpeg_opts = ["ffmpeg",

@@ -625,7 +625,7 @@ class CreditsGenerator:
             if text_width > canvas_width:
                 raise ValueError(f"Text '{text}' will not fit in canvas (text width of {text_width} in canvas of "
                                  f"width {canvas_width})")
-            left_margin = -3 * TPIXW_PER_VPIX + (canvas_width - text_width) // 2
+            left_margin = (canvas_width - text_width) // 2
             top_margin = (canvas_height // 2 +
                           (9 * TPIXW_PER_VPIX * (-1 if line == 0 else +1)))  # 4 pixels between lines
 

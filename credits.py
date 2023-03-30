@@ -541,7 +541,7 @@ class CreditsGenerator:
         self.datafile = None
         self.csv_reader = None
 
-    def load_background_canvas(self, x_offset, y_offset, point_in_time, open_new=True):
+    def load_background_canvas(self, x_offset, y_offset, point_in_time, open_new=True, update_live_canvas=False):
         if open_new:
             self.datafile = open("/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas_t.csv", "r")
             self.datafile.readline()  # skip header
@@ -579,6 +579,13 @@ class CreditsGenerator:
                     hit_x2 = max(0, hit_x2)
                     hit_y2 = max(0, hit_y2)
             self.background_canvas[hit_y:hit_y2 + 1, hit_x:hit_x2 + 1] = COLORS2022[row[2]]
+            if update_live_canvas:
+                # if self.frame_data[hit_y:hit_y + 1, hit_x:hit_x + 1].sum() == 765:  # is (255, 255, 255)
+                #     continue
+
+                # only update if has been hit before
+                if (hit_x, hit_y) in self.hits:
+                    self.frame_data[hit_y:hit_y2 + 1, hit_x:hit_x2 + 1] = COLORS2022[row[2]]
 
     # @staticmethod
     # def lookup_letter_bitmap(letter: str) -> list[tuple]:
@@ -657,11 +664,13 @@ class CreditsGenerator:
 
             if self.hit_num % 256 == 0:
                 # if self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES:
-                self.background_canvas_point_in_time += datetime.timedelta(seconds=15)
+                is_canvas_full = self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES
+
+                self.background_canvas_point_in_time += datetime.timedelta(seconds=30)
                 self.load_background_canvas(self.background_canvas_offset_x, self.background_canvas_offset_y,
                                             self.background_canvas_point_in_time,
-                                            open_new=False)
-                if self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES:
+                                            open_new=False, update_live_canvas=not is_canvas_full)
+                if is_canvas_full:
                     self.frame_data = self.background_canvas.copy()
                 self.current_frame += 1
                 return self.frame_data

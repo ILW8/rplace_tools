@@ -1,5 +1,6 @@
 import datetime
 import json
+import hashlib
 import subprocess
 
 import numpy as np
@@ -542,18 +543,27 @@ class CreditsGenerator:
         self.csv_reader = None
 
     def load_background_canvas(self, x_offset, y_offset, point_in_time, open_new=True, update_live_canvas=False):
+        source_data_path = "/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas_t.csv"  # make this configurable
+        checkpoint_name = hashlib.md5(source_data_path.encode('utf-8')).hexdigest()
+        checkpoint_name += f"_{x_offset}x{y_offset}y_{point_in_time.timestamp()}.npy"
         if open_new:
-            self.datafile = open("/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas_t.csv", "r")
+            self.datafile = open(source_data_path, "r")
             self.datafile.readline()  # skip header
             self.csv_reader = csv.reader(self.datafile)
             self.background_canvas_offset_x = x_offset
             self.background_canvas_offset_y = y_offset
             self.background_canvas_point_in_time = point_in_time
+
+        try:
+            self.background_canvas = np.load(checkpoint_name)
+            return
+        except OSError:
+            pass
         for i, row in enumerate(self.csv_reader):
             if i % 10_000 == 0:
                 timestamp = ciso8601.parse_datetime(row[0])
                 if timestamp > point_in_time:
-                    return
+                    break
 
             coords = row[3].split(",")
 
@@ -586,6 +596,10 @@ class CreditsGenerator:
                 # only update if has been hit before
                 if (hit_x, hit_y) in self.hits:
                     self.frame_data[hit_y:hit_y2 + 1, hit_x:hit_x2 + 1] = COLORS2022[row[2]]
+
+        if open_new:
+            # save to file
+            np.save(checkpoint_name, self.background_canvas)
 
     # @staticmethod
     # def lookup_letter_bitmap(letter: str) -> list[tuple]:

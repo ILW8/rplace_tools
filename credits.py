@@ -540,7 +540,6 @@ class CreditsGenerator:
 
         # offset of cropped_sorted.csv: 400x 500y
         self.datafile = None
-        self.csv_reader = None
 
     def load_background_canvas(self, x_offset, y_offset, point_in_time, open_new=True, update_live_canvas=False):
         source_data_path = "/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas_t.csv"  # make this configurable
@@ -549,17 +548,24 @@ class CreditsGenerator:
         if open_new:
             self.datafile = open(source_data_path, "r")
             self.datafile.readline()  # skip header
-            self.csv_reader = csv.reader(self.datafile)
             self.background_canvas_offset_x = x_offset
             self.background_canvas_offset_y = y_offset
             self.background_canvas_point_in_time = point_in_time
 
         try:
             self.background_canvas = np.load(checkpoint_name)
+            with open(checkpoint_name + ".line_num", "r") as infile:
+                seek_to_line = int(infile.readline().strip())
+                self.datafile.seek(0)
+                for i, _ in enumerate(self.datafile):
+                    if i == seek_to_line:
+                        break
             return
         except OSError:
             pass
-        for i, row in enumerate(self.csv_reader):
+
+        csv_reader = csv.reader(self.datafile)
+        for i, row in enumerate(csv_reader):
             if i % 10_000 == 0:
                 timestamp = ciso8601.parse_datetime(row[0])
                 if timestamp > point_in_time:
@@ -599,6 +605,8 @@ class CreditsGenerator:
 
         if open_new:
             # save to file
+            with open(checkpoint_name + ".line_num", "w") as outfile:
+                outfile.write(f"{csv_reader.line_num}\n")
             np.save(checkpoint_name, self.background_canvas)
 
     # @staticmethod

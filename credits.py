@@ -50,6 +50,10 @@ COLORS2022 = {'000000': (0, 0, 0), '00756F': (0, 117, 111), '009EAA': (0, 158, 1
               'FFA800': (255, 168, 0), 'FFB470': (255, 180, 112), 'FFD635': (255, 214, 53),
               'FFF8B8': (255, 248, 184), 'FFFFFF': (255, 255, 255)}
 
+COLORS2022KEYS = list(COLORS2022.keys())
+COLORS2022KEYS_NONGREY = list(set(list(COLORS2022.keys())) - {"FFFFFF", "D4D7D9", "898D90"})
+COLORS2022KEYS_NONWHITE_NORBLACK = list(set(list(COLORS2022.keys())) - {"FFFFFF", "000000"})
+
 NAMES = [
     "DeadRote",
     "Prof. Impressor",
@@ -60,8 +64,8 @@ NAMES = [
 ]
 # letters are 5x7
 
-VPIXW_PER_PIXEL = 2
-TPIXW_PER_VPIX = 4  # text pixel width per video pixel
+VPIXW_PER_PIXEL = 8
+TPIXW_PER_VPIX = 1  # text pixel width per video pixel
 RENDER_OFFSET_X = 000
 RENDER_OFFSET_Y = 400
 REALTIME_SECONDS_PER_FRAME = 10.
@@ -73,7 +77,15 @@ class CreditsGenerator:
         self.canvas_height = int(CANVAS_HEIGHT_2022 // VPIXW_PER_PIXEL)
         self.names = names
         self.randomization_duration = randomization_frames  # in frames
-        self.randomization_start_offset = 400  # in frames
+        self.randomization_start_offset = 60  # in frames
+
+        self.hits = set()
+        self.frame_data = np.full((self.canvas_height, self.canvas_width, 3), 255, dtype=np.uint8)
+
+        self.is_showing_text = False
+        self.showing_text_start = -1
+
+        self.blacklist = np.zeros((self.canvas_height, self.canvas_width), dtype=bool)
         self.blacklist = np.zeros((self.canvas_height, self.canvas_width), dtype=bool)
         self.blacklist_argwhere = np.zeros((0, 2))
         self.letter_bitmap = {
@@ -551,12 +563,6 @@ class CreditsGenerator:
 
         # offset of cropped_sorted.csv: 400x 500y
         # self.datafile = open("./cropped_sorted.csv", "r")
-        self.datafile = open("/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas_t.csv", "r")
-        self.datafile.readline()  # ignore csv header (comment out if not present)
-        self.csv_reader = csv.reader(self.datafile)
-
-    def __del__(self):
-        self.datafile.close()
 
     # @staticmethod
     # def lookup_letter_bitmap(letter: str) -> list[tuple]:
@@ -570,8 +576,6 @@ class CreditsGenerator:
         self.blacklist = np.zeros((canvas_height, canvas_width), dtype=bool)
 
         for line, text in enumerate((line_1, line_2)):
-            # text_width = (len_upper := len([letter for letter in text if letter.isupper()])) * (5 + 1) + \
-            #              (len(text) - len_upper) * (4 + 1)
             text_width = len(text) * (5 + 1) * TPIXW_PER_VPIX
 
             # center text:
@@ -579,7 +583,6 @@ class CreditsGenerator:
                 raise ValueError(f"Text '{text}' will not fit in canvas (text width of {text_width} in canvas of "
                                  f"width {canvas_width})")
             left_margin = (canvas_width - text_width) // 2
-            # left_margin = 0
             top_margin = (canvas_height // 2 +
                           (9 * TPIXW_PER_VPIX * (-1 if line == 0 else +1)))  # 4 pixels between lines
 
@@ -594,78 +597,83 @@ class CreditsGenerator:
                     self.blacklist[top_margin + y * TPIXW_PER_VPIX:top_margin + (y + 1) * TPIXW_PER_VPIX,
                                    current_x_pos + x * TPIXW_PER_VPIX:current_x_pos + (x + 1) * TPIXW_PER_VPIX] = True
         self.blacklist_argwhere = np.argwhere(self.blacklist)
-        # plt.imshow(self.blacklist, interpolation='none')
-        # plt.savefig("yes.png", dpi=600)
-        # plt.show()
-        # print()
 
     def __iter__(self):
         self.hit_num = 0
         self.current_frame = 0
         # self.last_flush = datetime.datetime.fromtimestamp(0)
-        self.last_flush = ciso8601.parse_datetime("2022-04-01T17:00:00.000")  # first pixel: 2022-04-01T12:44:10.315
+        # self.last_flush = ciso8601.parse_datetime("2022-04-01T17:00:00.000")  # first pixel: 2022-04-01T12:44:10.315
         self.update_blacklist("DeadRote", "Project Mgmt,Script Writing,Research")
         return self
 
     # @profile
     def __next__(self):
-        should_dispaly_credit = (self.current_frame + self.randomization_start_offset) >= self.randomization_duration
-        if should_dispaly_credit:
-            if random.randint(0,
-                              max(10,
-                                  (self.randomization_duration - (self.current_frame + self.randomization_start_offset)))
-                              ) == 0:
-                text_coords = self.blacklist_argwhere
-                hit_y, hit_x = text_coords[np.random.randint(text_coords.shape[0], size=1), :][0]
-                # return False, hit_x, hit_x, hit_y, hit_y, random.choice(("898D90", "D4D7D9", "FFFFFF"))
-                return False, hit_x, hit_x, hit_y, hit_y, "D4D7D9"
+        # # should_dispaly_credit = (self.current_frame + self.randomization_start_offset) >= self.randomization_duration
+        # # if should_dispaly_credit:
+        # #     if random.randint(0,
+        # #                       max(10,
+        # #                           (self.randomization_duration - (self.current_frame + self.randomization_start_offset)))
+        # #                       ) == 0:
+        # #         text_coords = self.blacklist_argwhere
+        # #         hit_y, hit_x = text_coords[np.random.randint(text_coords.shape[0], size=1), :][0]
+        # #         # return False, hit_x, hit_x, hit_y, hit_y, random.choice(("898D90", "D4D7D9", "FFFFFF"))
+        # #         return False, hit_x, hit_x, hit_y, hit_y, "D4D7D9"
+        #
+        # self.hit_num += 1
+        # should_flush = False
+        # if self.hit_num % 2000 == 0:
+        #     should_flush = True
+        #     self.current_frame += 1
+        #
+        # hit_x = random.randint(0, self.canvas_width - 1)
+        # hit_y = random.randint(0, self.canvas_height - 1)
+        #
+        # if self.current_frame - self.randomization_start_offset > 0:
+        #     # while self.blacklist[hit_y, hit_x]:
+        #     #     hit_x = random.randint(0, self.canvas_width - 1)
+        #     #     hit_y = random.randint(0, self.canvas_height - 1)
+        #     if self.blacklist[hit_y, hit_x]:
+        #         return should_flush, hit_x, hit_x, hit_y, hit_y, "000000"
+        #
+        #     return should_flush, hit_x, hit_x, hit_y, hit_y, "FFFFFF"
+        #
+        # # if should_dispaly_credit and self.blacklist[hit_y, hit_x]:
+        # #     # return should_flush, hit_x, hit_x2, hit_y, hit_y2, random.choice(("898D90", "D4D7D9", "FFFFFF"))
+        # #     return True, hit_x, hit_x, hit_y, hit_y, "D4D7D9"
+        # return should_flush, hit_x, hit_x, hit_y, hit_y, random.choice(COLORS2022KEYS_NONWHITE)
+        while True:
+            hit_x = random.randint(0, self.canvas_width - 1)
+            hit_y = random.randint(0, self.canvas_height - 1)
+            hit_coords = (hit_x, hit_y)
+            if hit_coords in self.hits and not self.is_showing_text:
+                if self.hit_num < self.canvas_height * self.canvas_width:
+                    continue
+                else:
+                    self.is_showing_text = True
+                    self.showing_text_start = self.current_frame
 
-        self.hit_num += 1
-        # timestampT,user_hash,color,coordinate,index
+            if self.is_showing_text and self.current_frame - self.showing_text_start >= 16:
+                if hit_coords not in self.hits:
+                    if len(self.hits) == 0:
+                        if self.current_frame - self.showing_text_start < 300:
+                            self.current_frame += 1
+                            return self.frame_data
+                    continue
 
-        # row = self.csv_reader.__next__()
-        for row in self.csv_reader:
-            coords = row[3].split(",")
-            if len(coords) == 4:
-                hit_x, hit_x2, hit_y, hit_y2 = map(lambda x: int(x[0]) - x[1], zip(coords,
-                                                                                   (RENDER_OFFSET_X, RENDER_OFFSET_X,
-                                                                                    RENDER_OFFSET_Y, RENDER_OFFSET_Y)))
+                self.hit_num -= 1
+                self.hits.remove(hit_coords)
+                if self.blacklist[hit_y, hit_x]:
+                    self.frame_data[hit_y, hit_x] = COLORS2022["000000"]
+                else:
+                    self.frame_data[hit_y, hit_x] = COLORS2022["FFFFFF"]
+            else:  # do the normal thing
+                self.hits.add(hit_coords)
+                self.hit_num += 1
+                self.frame_data[hit_y, hit_x] = COLORS2022[random.choice(COLORS2022KEYS_NONWHITE_NORBLACK)]
 
-            else:
-                hit_x, hit_y = map(lambda x: int(x[0]) - x[1], zip(coords, (RENDER_OFFSET_X, RENDER_OFFSET_Y)))
-                hit_x2 = hit_x
-                hit_y2 = hit_y
-
-            should_flush = False
-            timestamp = ciso8601.parse_datetime(row[0])
-            if (timestamp - self.last_flush).total_seconds() > REALTIME_SECONDS_PER_FRAME:
-                should_flush = True
+            if self.hit_num % 512 == 0:
                 self.current_frame += 1
-                self.last_flush = timestamp
-
-            if hit_y2 < self.canvas_height and hit_x2 < self.canvas_width:
-                if hit_x < 0 or hit_y < 0:
-                    if hit_x2 < 0:
-                        continue
-                    if hit_y2 < 0:
-                        continue
-                    hit_x = max(0, hit_x)
-                    hit_y = max(0, hit_y)
-                    hit_x2 = max(0, hit_x2)
-                    hit_y2 = max(0, hit_y2)
-            else:
-                continue
-
-            # if (self.current_frame - self.randomization_start_offset) >= self.randomization_time:  # dont think this is correct
-            #     # todo: randomize
-            #     if self.blacklist[hit_y, hit_x]:
-            #         return should_flush, hit_x, hit_x2, hit_y, hit_y2, "FFFFFF"
-            #     return should_flush, hit_x, hit_x2, hit_y, hit_y2, row[2]
-
-            if should_dispaly_credit and self.blacklist[hit_y, hit_x]:
-                # return should_flush, hit_x, hit_x2, hit_y, hit_y2, random.choice(("898D90", "D4D7D9", "FFFFFF"))
-                return should_flush, hit_x, hit_x2, hit_y, hit_y2, "D4D7D9"
-            return should_flush, hit_x, hit_x2, hit_y, hit_y2, row[2]
+                return self.frame_data
 
 
 # @profile
@@ -673,6 +681,7 @@ def main2022_rawvideo():
     name_prefix = f"credits_{datetime.datetime.now().timestamp()}"
     canvas_width = int(CANVAS_WIDTH_2022 // VPIXW_PER_PIXEL)  # effective canvas width
     canvas_height = int(CANVAS_HEIGHT_2022 // VPIXW_PER_PIXEL)
+    print(canvas_width, canvas_height)
     frame_data = np.full((canvas_height, canvas_width, 3), 255, dtype=np.uint8)
     # fd = open(f"/Volumes/stripe/rplace2022data/{name_prefix}.bin", "wb")
     # cctx = zstd.ZstdCompressor(level=1, threads=3)
@@ -692,10 +701,10 @@ def main2022_rawvideo():
                    "-vcodec", "rawvideo",
                    "-s", f"{canvas_width}x{canvas_height}",
                    "-pix_fmt", "rgb24",
-                   "-r", "120",
+                   "-r", "60",
                    "-i", "-",
                    "-pix_fmt", "yuv420p",
-                   "-vf", f"scale={canvas_width * 2}:{canvas_height * 2}:flags=neighbor",
+                   "-vf", f"scale={canvas_width * VPIXW_PER_PIXEL}:{canvas_height * VPIXW_PER_PIXEL}:flags=neighbor",
                    "-an",
                    "-c:v", "hevc_videotoolbox",  # mac-specific. use libx264 otherwise
                    "-q:v", "90",  # specific to videotoolbox, use -crf 15 with libx264
@@ -706,27 +715,30 @@ def main2022_rawvideo():
                                    stderr=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL)
 
-    for should_flush_frame, hit_x, hit_x2, hit_y, hit_y2, hit_color in credits_generator:
-        # todo: make use of VPIXW_PER_PIXEL
-        # frame_data[hit_y * VPIXW_PER_PIXEL:(hit_y2+1) * VPIXW_PER_PIXEL,
-        #            hit_x * VPIXW_PER_PIXEL:(hit_x2+1) * VPIXW_PER_PIXEL] = COLORS2022[hit_color]
-
-        # if hit_y2 <= canvas_height and hit_x2 <= canvas_width:
-        #     if hit_x < 0 or hit_y < 0:
-        #         if hit_x2 < 0:
-        #             continue
-        #         if hit_y2 < 0:
-        #             continue
-        #         hit_x = max(0, hit_x)
-        #         hit_y = max(0, hit_y)
-        #         hit_x2 = max(0, hit_x2)
-        #         hit_y2 = max(0, hit_y2)
-        #     frame_data[hit_y:hit_y2+1, hit_x:hit_x2+1] = COLORS2022[hit_color]
-        frame_data[hit_y:hit_y2 + 1, hit_x:hit_x2 + 1] = COLORS2022[hit_color]
-
-        if should_flush_frame:
-            ffmpeg_proc.stdin.write(frame_data.tobytes())
-            pbar.update(1)
+    # for should_flush_frame, hit_x, hit_x2, hit_y, hit_y2, hit_color in credits_generator:
+    #     # todo: make use of VPIXW_PER_PIXEL
+    #     # frame_data[hit_y * VPIXW_PER_PIXEL:(hit_y2+1) * VPIXW_PER_PIXEL,
+    #     #            hit_x * VPIXW_PER_PIXEL:(hit_x2+1) * VPIXW_PER_PIXEL] = COLORS2022[hit_color]
+    #
+    #     # if hit_y2 <= canvas_height and hit_x2 <= canvas_width:
+    #     #     if hit_x < 0 or hit_y < 0:
+    #     #         if hit_x2 < 0:
+    #     #             continue
+    #     #         if hit_y2 < 0:
+    #     #             continue
+    #     #         hit_x = max(0, hit_x)
+    #     #         hit_y = max(0, hit_y)
+    #     #         hit_x2 = max(0, hit_x2)
+    #     #         hit_y2 = max(0, hit_y2)
+    #     #     frame_data[hit_y:hit_y2+1, hit_x:hit_x2+1] = COLORS2022[hit_color]
+    #     frame_data[hit_y:hit_y2 + 1, hit_x:hit_x2 + 1] = COLORS2022[hit_color]
+    #
+    #     if should_flush_frame:
+    #         ffmpeg_proc.stdin.write(frame_data.tobytes())
+    #         pbar.update(1)
+    for frame_data in credits_generator:
+        ffmpeg_proc.stdin.write(frame_data.tobytes())
+        pbar.update(1)
     ffmpeg_proc.stdin.flush()
     ffmpeg_proc.stdin.close()
     ffmpeg_proc.wait()

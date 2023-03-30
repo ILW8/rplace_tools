@@ -605,13 +605,12 @@ class CreditsGenerator:
             if text_width > canvas_width:
                 raise ValueError(f"Text '{text}' will not fit in canvas (text width of {text_width} in canvas of "
                                  f"width {canvas_width})")
-            left_margin = (canvas_width - text_width) // 2
+            left_margin = -3 * TPIXW_PER_VPIX + (canvas_width - text_width) // 2
             top_margin = (canvas_height // 2 +
                           (9 * TPIXW_PER_VPIX * (-1 if line == 0 else +1)))  # 4 pixels between lines
 
             current_x_pos = left_margin
             for letter in text:
-                current_x_pos += 6 * TPIXW_PER_VPIX
                 bitmap = self.letter_bitmap[letter.upper()]
 
                 # self.blacklist[top_margin:top_margin + 7, current_x_pos:current_x_pos + 5] = bitmap
@@ -619,6 +618,7 @@ class CreditsGenerator:
                     # print(y, x)
                     self.blacklist[top_margin + y * TPIXW_PER_VPIX:top_margin + (y + 1) * TPIXW_PER_VPIX,
                                    current_x_pos + x * TPIXW_PER_VPIX:current_x_pos + (x + 1) * TPIXW_PER_VPIX] = True
+                current_x_pos += 6 * TPIXW_PER_VPIX
         self.blacklist_argwhere = np.argwhere(self.blacklist)
 
     def __iter__(self):

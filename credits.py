@@ -1,5 +1,4 @@
 import datetime
-import json
 import hashlib
 import subprocess
 
@@ -7,17 +6,9 @@ import numpy as np
 import csv
 
 from tqdm import tqdm
-import zstandard as zstd
 import ciso8601
 import random
 from raw_renderer import COLORS2022
-
-import matplotlib.pyplot as plt
-
-# from line_profiler_pycharm import profile
-
-
-# from line_profiler_pycharm import profile
 
 
 CANVAS_WIDTH_2022 = 1920
@@ -27,21 +18,28 @@ COLORS2022KEYS = list(COLORS2022.keys())
 COLORS2022KEYS_NONGREY = list(set(list(COLORS2022.keys())) - {"FFFFFF", "D4D7D9", "898D90"})
 COLORS2022KEYS_NONWHITE_NORBLACK = list(set(list(COLORS2022.keys())) - {"FFFFFF", "000000"})
 
-NAMES = [
-    "DeadRote",
-    "Prof. Impressor",
-    "s1nqq",
-    "n3rdiness",
-    "placeholder",
-    "even longer name here",
+CREDITS = [
+    ("BTMC", "Narrator"),
+
+    ("Peter Mazur", "Editor"),
+    ("DeadRote", "Project mgmt, Script Writing, Research"),
+    ("s1nqq", "Script Writing, Research"),
+    ("n3rdiness", "Script Writing"),
+
+    ("James or whatever", "Technical assistance"),
+    ("KAT", "Research"),
+    ("Kroytz", "Research"),
+    ("Chromeilion", "Research"),
+    ("Rukai_UI", "Research"),
+    ("VibinJesus", "XQC Arc Fact checking"),
+
+    ("emanfman", "Interview and materials"),
 ]
-# letters are 5x7
 
 VPIXW_PER_PIXEL = 8
 TPIXW_PER_VPIX = 1  # text pixel width per video pixel
-RENDER_OFFSET_X = 000
-RENDER_OFFSET_Y = 400
-REALTIME_SECONDS_PER_FRAME = 10.
+REALTIME_SECONDS_PER_FRAME = 30
+TRANSITION_TIME_FRAMES = 120
 
 
 class CreditsGenerator:
@@ -664,7 +662,6 @@ class CreditsGenerator:
                     self.is_showing_text = True
                     self.showing_text_start = self.current_frame
 
-            TRANSITION_TIME_FRAMES = 120
             if self.is_showing_text and self.current_frame - self.showing_text_start >= TRANSITION_TIME_FRAMES:
                 if hit_coords not in self.hits:
                     if len(self.hits) == 0:
@@ -686,9 +683,10 @@ class CreditsGenerator:
 
             if self.hit_num % 256 == 0:
                 # if self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES:
-                is_canvas_full = self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES
+                is_canvas_full = self.is_showing_text and \
+                                 self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES
 
-                self.background_canvas_point_in_time += datetime.timedelta(seconds=30)
+                self.background_canvas_point_in_time += datetime.timedelta(seconds=REALTIME_SECONDS_PER_FRAME)
                 self.load_background_canvas(self.background_canvas_offset_x, self.background_canvas_offset_y,
                                             self.background_canvas_point_in_time,
                                             open_new=False, update_live_canvas=not is_canvas_full)
@@ -699,12 +697,12 @@ class CreditsGenerator:
 
 
 # @profile
-def main2022_rawvideo():
+def main_2022():
     name_prefix = f"credits_{datetime.datetime.now().timestamp()}"
     canvas_width = int(CANVAS_WIDTH_2022 // VPIXW_PER_PIXEL)  # effective canvas width
     canvas_height = int(CANVAS_HEIGHT_2022 // VPIXW_PER_PIXEL)
     print(canvas_width, canvas_height)
-    credits_generator = CreditsGenerator(NAMES)
+    credits_generator = CreditsGenerator(CREDITS)
     credits_generator.load_background_canvas(600, 600, ciso8601.parse_datetime("2022-04-01T16:00:00.000"))
 
     pbar = tqdm(unit="frames")
@@ -736,4 +734,4 @@ def main2022_rawvideo():
 
 
 if __name__ == "__main__":
-    main2022_rawvideo()
+    main_2022()

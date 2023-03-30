@@ -1,22 +1,14 @@
 import datetime
-import json
+import hashlib
 import subprocess
 
 import numpy as np
 import csv
 
 from tqdm import tqdm
-import zstandard as zstd
 import ciso8601
 import random
 from raw_renderer import COLORS2022
-
-import matplotlib.pyplot as plt
-
-# from line_profiler_pycharm import profile
-
-
-# from line_profiler_pycharm import profile
 
 
 CANVAS_WIDTH_2022 = 1920
@@ -26,21 +18,28 @@ COLORS2022KEYS = list(COLORS2022.keys())
 COLORS2022KEYS_NONGREY = list(set(list(COLORS2022.keys())) - {"FFFFFF", "D4D7D9", "898D90"})
 COLORS2022KEYS_NONWHITE_NORBLACK = list(set(list(COLORS2022.keys())) - {"FFFFFF", "000000"})
 
-NAMES = [
-    "DeadRote",
-    "Prof. Impressor",
-    "s1nqq",
-    "n3rdiness",
-    "placeholder",
-    "even longer name here",
+CREDITS = [
+    ("BTMC", "Narrator"),
+
+    ("Peter Mazur", "Editor"),
+    ("DeadRote", "Project mgmt, Script Writing, Research"),
+    ("s1nqq", "Script Writing, Research"),
+    ("n3rdiness", "Script Writing"),
+
+    ("James or whatever", "Technical assistance"),
+    ("KAT", "Research"),
+    ("Kroytz", "Research"),
+    ("Chromeilion", "Research"),
+    ("Rukai_UI", "Research"),
+    ("VibinJesus", "XQC Arc Fact checking"),
+
+    ("emanfman", "Interview and materials"),
 ]
-# letters are 5x7
 
 VPIXW_PER_PIXEL = 8
 TPIXW_PER_VPIX = 1  # text pixel width per video pixel
-RENDER_OFFSET_X = 000
-RENDER_OFFSET_Y = 400
-REALTIME_SECONDS_PER_FRAME = 10.
+REALTIME_SECONDS_PER_FRAME = 30
+TRANSITION_TIME_FRAMES = 120
 
 
 class CreditsGenerator:
@@ -539,21 +538,36 @@ class CreditsGenerator:
 
         # offset of cropped_sorted.csv: 400x 500y
         self.datafile = None
-        self.csv_reader = None
 
     def load_background_canvas(self, x_offset, y_offset, point_in_time, open_new=True, update_live_canvas=False):
+        source_data_path = "/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas_t.csv"  # make this configurable
+        checkpoint_name = hashlib.md5(source_data_path.encode('utf-8')).hexdigest()
+        checkpoint_name += f"_{x_offset}x{y_offset}y_{point_in_time.timestamp()}.npy"
         if open_new:
-            self.datafile = open("/Volumes/tiny_m2/rplace_video_btmc/data/sorted_canvas_t.csv", "r")
+            self.datafile = open(source_data_path, "r")
             self.datafile.readline()  # skip header
-            self.csv_reader = csv.reader(self.datafile)
             self.background_canvas_offset_x = x_offset
             self.background_canvas_offset_y = y_offset
             self.background_canvas_point_in_time = point_in_time
-        for i, row in enumerate(self.csv_reader):
+
+        try:
+            self.background_canvas = np.load(checkpoint_name)
+            with open(checkpoint_name + ".line_num", "r") as infile:
+                seek_to_line = int(infile.readline().strip())
+                self.datafile.seek(0)
+                for i, _ in enumerate(self.datafile):
+                    if i == seek_to_line:
+                        break
+            return
+        except OSError:
+            pass
+
+        csv_reader = csv.reader(self.datafile)
+        for i, row in enumerate(csv_reader):
             if i % 10_000 == 0:
                 timestamp = ciso8601.parse_datetime(row[0])
                 if timestamp > point_in_time:
-                    return
+                    break
 
             coords = row[3].split(",")
 
@@ -587,6 +601,12 @@ class CreditsGenerator:
                 if (hit_x, hit_y) in self.hits:
                     self.frame_data[hit_y:hit_y2 + 1, hit_x:hit_x2 + 1] = COLORS2022[row[2]]
 
+        if open_new:
+            # save to file
+            with open(checkpoint_name + ".line_num", "w") as outfile:
+                outfile.write(f"{csv_reader.line_num}\n")
+            np.save(checkpoint_name, self.background_canvas)
+
     # @staticmethod
     # def lookup_letter_bitmap(letter: str) -> list[tuple]:
     #     assert len(letter) == 1
@@ -605,13 +625,12 @@ class CreditsGenerator:
             if text_width > canvas_width:
                 raise ValueError(f"Text '{text}' will not fit in canvas (text width of {text_width} in canvas of "
                                  f"width {canvas_width})")
-            left_margin = (canvas_width - text_width) // 2
+            left_margin = -3 * TPIXW_PER_VPIX + (canvas_width - text_width) // 2
             top_margin = (canvas_height // 2 +
                           (9 * TPIXW_PER_VPIX * (-1 if line == 0 else +1)))  # 4 pixels between lines
 
             current_x_pos = left_margin
             for letter in text:
-                current_x_pos += 6 * TPIXW_PER_VPIX
                 bitmap = self.letter_bitmap[letter.upper()]
 
                 # self.blacklist[top_margin:top_margin + 7, current_x_pos:current_x_pos + 5] = bitmap
@@ -619,6 +638,7 @@ class CreditsGenerator:
                     # print(y, x)
                     self.blacklist[top_margin + y * TPIXW_PER_VPIX:top_margin + (y + 1) * TPIXW_PER_VPIX,
                                    current_x_pos + x * TPIXW_PER_VPIX:current_x_pos + (x + 1) * TPIXW_PER_VPIX] = True
+                current_x_pos += 6 * TPIXW_PER_VPIX
         self.blacklist_argwhere = np.argwhere(self.blacklist)
 
     def __iter__(self):
@@ -642,7 +662,6 @@ class CreditsGenerator:
                     self.is_showing_text = True
                     self.showing_text_start = self.current_frame
 
-            TRANSITION_TIME_FRAMES = 120
             if self.is_showing_text and self.current_frame - self.showing_text_start >= TRANSITION_TIME_FRAMES:
                 if hit_coords not in self.hits:
                     if len(self.hits) == 0:
@@ -664,9 +683,10 @@ class CreditsGenerator:
 
             if self.hit_num % 256 == 0:
                 # if self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES:
-                is_canvas_full = self.is_showing_text and self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES
+                is_canvas_full = self.is_showing_text and \
+                                 self.current_frame - self.showing_text_start < TRANSITION_TIME_FRAMES
 
-                self.background_canvas_point_in_time += datetime.timedelta(seconds=30)
+                self.background_canvas_point_in_time += datetime.timedelta(seconds=REALTIME_SECONDS_PER_FRAME)
                 self.load_background_canvas(self.background_canvas_offset_x, self.background_canvas_offset_y,
                                             self.background_canvas_point_in_time,
                                             open_new=False, update_live_canvas=not is_canvas_full)
@@ -677,12 +697,12 @@ class CreditsGenerator:
 
 
 # @profile
-def main2022_rawvideo():
+def main_2022():
     name_prefix = f"credits_{datetime.datetime.now().timestamp()}"
     canvas_width = int(CANVAS_WIDTH_2022 // VPIXW_PER_PIXEL)  # effective canvas width
     canvas_height = int(CANVAS_HEIGHT_2022 // VPIXW_PER_PIXEL)
     print(canvas_width, canvas_height)
-    credits_generator = CreditsGenerator(NAMES)
+    credits_generator = CreditsGenerator(CREDITS)
     credits_generator.load_background_canvas(600, 600, ciso8601.parse_datetime("2022-04-01T16:00:00.000"))
 
     pbar = tqdm(unit="frames")
@@ -714,4 +734,4 @@ def main2022_rawvideo():
 
 
 if __name__ == "__main__":
-    main2022_rawvideo()
+    main_2022()
